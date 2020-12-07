@@ -35,7 +35,7 @@
 //! ```
 mod logging;
 
-use actix_web::{error, get, post, web, App, HttpServer, Responder, Result};
+use actix_web::{error, web, App, HttpServer, Responder, Result};
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::RwLock};
@@ -67,14 +67,13 @@ struct KnownUrls {
 
 /// Handles POST requests to shorten URLs.
 ///
-/// Takes a JSON body of a [`UrlRequest`](crate::main::UrlRequest), i.e.
+/// Takes a JSON body of a [`UrlRequest`](crate::UrlRequest), i.e.
 /// ```json
 /// {
 ///   "url": "https://google.com"
 /// }
 /// ```
 /// Returns a shortened URL or a [`BadRequest`](error::ErrorBadRequest)
-#[post("/shorten")]
 async fn shorten(
     url_req: web::Json<UrlRequest>,
     known_urls: web::Data<KnownUrls>,
@@ -121,7 +120,6 @@ async fn shorten(
 /// Redirects requests from shortened URLs to their expanded version
 ///
 /// Returns either a 303 See Other response, or a 404 Not Found.
-#[get("/{redirect_id}")]
 async fn redirect(
     redirect_id: web::Path<String>,
     known_urls: web::Data<KnownUrls>,
@@ -160,7 +158,6 @@ async fn redirect(
 
 /// Responds with a JSON representation of the HashMap of known URLs for
 /// debugging purposes
-#[get("/misc/debug")]
 async fn debugger(known_urls: web::Data<KnownUrls>) -> impl Responder {
     let urls = known_urls.urls.read().unwrap();
 
@@ -186,9 +183,9 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .service(shorten)
-            .service(redirect)
-            .service(debugger)
+            .route("/shorten", web::post().to(shorten))
+            .route("/{redirect_id}", web::get().to(redirect))
+            .route("/misc/debug", web::get().to(debugger))
             .wrap(TracingLogger)
             .app_data(known_urls.to_owned())
     })
