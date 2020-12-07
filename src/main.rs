@@ -38,7 +38,7 @@ mod logging;
 use actix_web::{error, get, post, web, App, HttpServer, Responder, Result};
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Mutex};
+use std::{collections::HashMap, sync::RwLock};
 use url::Url;
 
 // logging imports
@@ -62,7 +62,7 @@ type LongURL = String;
 /// Wraps a `Mutex` around a `HashMap` for storing URLs and their shortened
 /// variants.
 struct KnownUrls {
-    urls: Mutex<HashMap<LongURL, ShortUrl>>,
+    urls: RwLock<HashMap<LongURL, ShortUrl>>,
 }
 
 /// Handles POST requests to shorten URLs.
@@ -91,7 +91,7 @@ async fn shorten(
         }
     };
 
-    let mut urls = known_urls.urls.lock().unwrap();
+    let mut urls = known_urls.urls.write().unwrap();
     debug!("Obtained mutex to known urls hashmap");
 
     // if the URL exists as a key, then return the already generated short URL,
@@ -126,7 +126,7 @@ async fn redirect(
     redirect_id: web::Path<String>,
     known_urls: web::Data<KnownUrls>,
 ) -> impl Responder {
-    let urls = known_urls.urls.lock().unwrap();
+    let urls = known_urls.urls.read().unwrap();
     debug!("Obtained mutex to known urls hashmap");
 
     let short_url = format!("short.fe/{}", redirect_id.0.to_string());
@@ -162,8 +162,10 @@ async fn redirect(
 /// debugging purposes
 #[get("/misc/debug")]
 async fn debugger(known_urls: web::Data<KnownUrls>) -> impl Responder {
-    let urls = known_urls.urls.lock().unwrap();
-    format!("{:?}", urls)
+    let urls = known_urls.urls.read().unwrap();
+
+    // this handler needs to return the HashMap, and not the RwLockReadGuard
+    format!("{:?}", urls.to_owned())
 }
 
 /// Sets up the HttpServer and shared resources.
@@ -178,7 +180,7 @@ async fn main() -> std::io::Result<()> {
     init_subscriber(subscriber);
 
     let known_urls = web::Data::new(KnownUrls {
-        urls: Mutex::new(HashMap::new()),
+        urls: RwLock::new(HashMap::new()),
     });
     debug!("main(): set up hashmap and mutex for known url pool");
 
