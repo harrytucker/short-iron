@@ -43,12 +43,11 @@ use url::Url;
 
 // logging imports
 use logging::*;
-#[allow(unused_imports)]
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use tracing_actix_web::TracingLogger;
 
 /// Wraps a `String` type for POST requests to shorten URLs.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct UrlRequest {
     url: String,
 }
@@ -61,6 +60,7 @@ type LongURL = String;
 
 /// Wraps a `Mutex` around a `HashMap` for storing URLs and their shortened
 /// variants.
+#[derive(Debug)]
 struct KnownUrls {
     urls: RwLock<HashMap<LongURL, ShortUrl>>,
 }
@@ -85,23 +85,32 @@ async fn shorten(
             url
         }
         Err(e) => {
-            error!("Failed to parse ({}) as a url", submitted_url);
+            error!(
+                input = submitted_url.as_str(),
+                "Failed to parse input as a URL",
+            );
             return Err(error::ErrorBadRequest(e));
         }
     };
 
     let mut urls = known_urls.urls.write().unwrap();
-    debug!("Obtained mutex to known urls hashmap");
+    debug!(?urls, "Obtained write lock to known URLs");
 
     // if the URL exists as a key, then return the already generated short URL,
     // otherwise generate a new ID and short URL, then send the response.
     match urls.get(&valid_url.to_string()) {
         Some(existing) => {
-            debug!("URL ({}) already existed", existing);
-            Ok(existing.to_string())
+            debug!(
+                shortened_url = ?existing,
+                "Submitted URL already shortened."
+            );
+            Ok(existing.into())
         }
         None => {
-            debug!("URL ({}) not yet recorded, generating ID", submitted_url);
+            debug!(
+                url = ?submitted_url,
+                "URL not yet recorded, generating ID"
+            );
             let shortened = format!("short.fe/{}", nanoid!(10));
 
             // it's the first time this value is inserted, so HashMap.insert()
@@ -111,8 +120,11 @@ async fn shorten(
                 _ => {}
             }
 
-            debug!("Generated shortened URL ({})", shortened.to_string());
-            Ok(shortened.to_string())
+            info!(
+                shortened_url = shortened.as_str(),
+                "Generated shortened URL"
+            );
+            Ok(shortened.into())
         }
     }
 }
@@ -125,15 +137,21 @@ async fn redirect(
     known_urls: web::Data<KnownUrls>,
 ) -> impl Responder {
     let urls = known_urls.urls.read().unwrap();
-    debug!("Obtained mutex to known urls hashmap");
+    debug!(?urls, "Obtained read lock to known URLs");
 
     let short_url = format!("short.fe/{}", redirect_id.0.to_string());
-    debug!("Full short URL ({})", short_url);
+    debug!(
+        constructed_url = ?short_url,
+        "Constructed full URL from request"
+    );
 
     // finds the first matching URL in the HashMap
     let expanded_url = urls.iter().find_map(|(key, val)| {
         if val.to_string() == short_url {
-            debug!("Found expanded URL ({})", key.to_string());
+            debug!(
+                expanded_url = ?key,
+                "Expanded short URL to full URL"
+            );
             Some(key)
         } else {
             None
@@ -144,13 +162,14 @@ async fn redirect(
     // a 303 See Other response for the expanded URL
     match expanded_url {
         Some(url) => {
+            info!(?expanded_url, "Redirected to expanded URL");
             return web::HttpResponse::SeeOther()
                 .header("Location", url.to_string())
-                .await
+                .await;
         }
         // else, return 404 Not Found
         None => {
-            debug!("Short URL ({}) was not found", short_url);
+            info!(?short_url, "Short URL isn't registered, no redirect");
             return web::HttpResponse::NotFound().await;
         }
     }
@@ -172,6 +191,7 @@ async fn debugger(known_urls: web::Data<KnownUrls>) -> impl Responder {
 /// - KnownUrls shared mutable HashMap
 /// - AppFactory and HttpServer
 #[actix_web::main]
+#[tracing::instrument]
 async fn main() -> std::io::Result<()> {
     let subscriber = get_subscriber("short-iron".into(), "info".into());
     init_subscriber(subscriber);
@@ -179,7 +199,7 @@ async fn main() -> std::io::Result<()> {
     let known_urls = web::Data::new(KnownUrls {
         urls: RwLock::new(HashMap::new()),
     });
-    debug!("main(): set up hashmap and mutex for known url pool");
+    debug!("Allocated RwLock and HashMap for known URLs");
 
     HttpServer::new(move || {
         App::new()
