@@ -191,7 +191,6 @@ async fn debugger(known_urls: web::Data<KnownUrls>) -> impl Responder {
 /// - KnownUrls shared mutable HashMap
 /// - AppFactory and HttpServer
 #[actix_web::main]
-#[tracing::instrument]
 async fn main() -> std::io::Result<()> {
     let subscriber = get_subscriber("short-iron".into(), "info".into());
     init_subscriber(subscriber);
