@@ -36,9 +36,10 @@
 mod logging;
 
 use actix_web::{error, web, App, HttpServer, Responder, Result};
+use async_std::sync::RwLock;
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::RwLock};
+use std::collections::HashMap;
 use url::Url;
 
 // logging imports
@@ -93,7 +94,7 @@ async fn shorten(
         }
     };
 
-    let mut urls = known_urls.urls.write().unwrap();
+    let mut urls = known_urls.urls.write().await;
     debug!(?urls, "Obtained write lock to known URLs");
 
     // if the URL exists as a key, then return the already generated short URL,
@@ -136,7 +137,7 @@ async fn redirect(
     redirect_id: web::Path<String>,
     known_urls: web::Data<KnownUrls>,
 ) -> impl Responder {
-    let urls = known_urls.urls.read().unwrap();
+    let urls = known_urls.urls.read().await;
     debug!(?urls, "Obtained read lock to known URLs");
 
     let short_url = format!("short.fe/{}", redirect_id.0.to_string());
@@ -178,10 +179,10 @@ async fn redirect(
 /// Responds with a JSON representation of the HashMap of known URLs for
 /// debugging purposes
 async fn debugger(known_urls: web::Data<KnownUrls>) -> impl Responder {
-    let urls = known_urls.urls.read().unwrap();
+    let urls = known_urls.urls.read().await;
 
     // this handler needs to return the HashMap, and not the RwLockReadGuard
-    format!("{:?}", urls.to_owned())
+    web::Json(urls.to_owned())
 }
 
 /// Sets up the HttpServer and shared resources.
