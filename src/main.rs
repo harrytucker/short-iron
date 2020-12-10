@@ -37,10 +37,12 @@ mod logging;
 
 use actix_web::{error, web, App, HttpServer, Responder, Result};
 use async_std::sync::RwLock;
+use error::ErrorBadRequest;
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use url::Url;
+use web::Json;
 
 // logging imports
 use logging::*;
@@ -90,7 +92,7 @@ async fn shorten(
                 input = submitted_url.as_str(),
                 "Failed to parse input as a URL",
             );
-            return Err(error::ErrorBadRequest(e));
+            return Err(ErrorBadRequest(e));
         }
     };
 
@@ -182,7 +184,7 @@ async fn debugger(known_urls: web::Data<KnownUrls>) -> impl Responder {
     let urls = known_urls.urls.read().await;
 
     // this handler needs to return the HashMap, and not the RwLockReadGuard
-    web::Json(urls.to_owned())
+    Json(urls.to_owned())
 }
 
 /// Sets up the HttpServer and shared resources.
