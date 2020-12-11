@@ -21,7 +21,7 @@ pub async fn redirect(
 
     // finds the first matching URL in the HashMap
     let expanded_url = urls.iter().find_map(|(key, val)| {
-        if val.to_string() == short_url {
+        if *val == short_url {
             debug!(
                 expanded_url = ?key,
                 "Expanded short URL to full URL"
@@ -34,7 +34,7 @@ pub async fn redirect(
 
     // checks the option found by expanded_url, if a URL is present then return
     // a 303 See Other response for the expanded URL
-    return match expanded_url {
+    match expanded_url {
         Some(url) => {
             info!(?expanded_url, "Redirected to expanded URL");
             web::HttpResponse::SeeOther()
