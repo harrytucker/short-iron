@@ -1,5 +1,4 @@
-use actix_web::{error, Responder, Result, web};
-use tracing::{debug, error, info};
+use actix_web::{Responder, web};
 use web::Json;
 
 use crate::KnownUrls;

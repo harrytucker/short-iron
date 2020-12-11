@@ -1,4 +1,4 @@
-use actix_web::{error, Responder, Result, web};
+use actix_web::{error, Result, web};
 use error::ErrorBadRequest;
 use nanoid::nanoid;
 use tracing::{debug, error, info};
