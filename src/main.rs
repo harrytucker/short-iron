@@ -33,158 +33,37 @@
 //! ```bash
 //! ./short-iron | bunyan -o short
 //! ```
-mod logging;
-
-use actix_web::{error, web, App, HttpServer, Responder, Result};
-use async_std::sync::RwLock;
-use error::ErrorBadRequest;
-use nanoid::nanoid;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use url::Url;
-use web::Json;
 
-// logging imports
-use logging::*;
-use tracing::{debug, error, info};
+use actix_web::{App, HttpServer, web};
+use async_std::sync::RwLock;
+use serde::{Deserialize, Serialize};
+use tracing::debug;
 use tracing_actix_web::TracingLogger;
+
+use handlers::{debugger, redirect, shorten};
+use logging::*;
+
+mod handlers;
+mod logging;
 
 /// Wraps a `String` type for POST requests to shorten URLs.
 #[derive(Serialize, Deserialize, Debug)]
-struct UrlRequest {
+pub struct UrlRequest {
     url: String,
 }
 
 /// Aliases for `String` for code clarity.
-type ShortUrl = String;
+pub type ShortUrl = String;
 
 /// Aliases for `String` for code clarity.
-type LongURL = String;
+pub type LongURL = String;
 
 /// Wraps a `Mutex` around a `HashMap` for storing URLs and their shortened
 /// variants.
 #[derive(Debug)]
-struct KnownUrls {
+pub struct KnownUrls {
     urls: RwLock<HashMap<LongURL, ShortUrl>>,
-}
-
-/// Handles POST requests to shorten URLs.
-///
-/// Takes a JSON body of a [`UrlRequest`](crate::UrlRequest), i.e.
-/// ```json
-/// {
-///   "url": "https://google.com"
-/// }
-/// ```
-/// Returns a shortened URL or a [`BadRequest`](error::ErrorBadRequest)
-async fn shorten(
-    url_req: web::Json<UrlRequest>,
-    known_urls: web::Data<KnownUrls>,
-) -> Result<String> {
-    let submitted_url = &url_req.url.to_string();
-    let valid_url = match Url::parse(submitted_url) {
-        Ok(url) => {
-            debug!("Submitted url is valid");
-            url
-        }
-        Err(e) => {
-            error!(
-                input = submitted_url.as_str(),
-                "Failed to parse input as a URL",
-            );
-            return Err(ErrorBadRequest(e));
-        }
-    };
-
-    let mut urls = known_urls.urls.write().await;
-    debug!(?urls, "Obtained write lock to known URLs");
-
-    // if the URL exists as a key, then return the already generated short URL,
-    // otherwise generate a new ID and short URL, then send the response.
-    match urls.get(&valid_url.to_string()) {
-        Some(existing) => {
-            debug!(
-                shortened_url = ?existing,
-                "Submitted URL already shortened."
-            );
-            Ok(existing.into())
-        }
-        None => {
-            debug!(
-                url = ?submitted_url,
-                "URL not yet recorded, generating ID"
-            );
-            let shortened = format!("short.fe/{}", nanoid!(10));
-
-            // it's the first time this value is inserted, so HashMap.insert()
-            // will return a `None` variant that we'll throw out
-            match urls.insert(valid_url.to_string(), shortened.to_string()) {
-                None => {}
-                _ => {}
-            }
-
-            info!(
-                shortened_url = shortened.as_str(),
-                "Generated shortened URL"
-            );
-            Ok(shortened.into())
-        }
-    }
-}
-
-/// Redirects requests from shortened URLs to their expanded version
-///
-/// Returns either a 303 See Other response, or a 404 Not Found.
-async fn redirect(
-    redirect_id: web::Path<String>,
-    known_urls: web::Data<KnownUrls>,
-) -> impl Responder {
-    let urls = known_urls.urls.read().await;
-    debug!(?urls, "Obtained read lock to known URLs");
-
-    let short_url = format!("short.fe/{}", redirect_id.0.to_string());
-    debug!(
-        constructed_url = ?short_url,
-        "Constructed full URL from request"
-    );
-
-    // finds the first matching URL in the HashMap
-    let expanded_url = urls.iter().find_map(|(key, val)| {
-        if val.to_string() == short_url {
-            debug!(
-                expanded_url = ?key,
-                "Expanded short URL to full URL"
-            );
-            Some(key)
-        } else {
-            None
-        }
-    });
-
-    // checks the option found by expanded_url, if a URL is present then return
-    // a 303 See Other response for the expanded URL
-    match expanded_url {
-        Some(url) => {
-            info!(?expanded_url, "Redirected to expanded URL");
-            return web::HttpResponse::SeeOther()
-                .header("Location", url.to_string())
-                .await;
-        }
-        // else, return 404 Not Found
-        None => {
-            info!(?short_url, "Short URL isn't registered, no redirect");
-            return web::HttpResponse::NotFound().await;
-        }
-    }
-}
-
-/// Responds with a JSON representation of the HashMap of known URLs for
-/// debugging purposes
-async fn debugger(known_urls: web::Data<KnownUrls>) -> impl Responder {
-    let urls = known_urls.urls.read().await;
-
-    // this handler needs to return the HashMap, and not the RwLockReadGuard
-    Json(urls.to_owned())
 }
 
 /// Sets up the HttpServer and shared resources.
