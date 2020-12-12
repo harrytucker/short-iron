@@ -37,8 +37,8 @@ pub async fn shorten(
     let mut urls = known_urls.urls.write().await;
     debug!(?urls, "Obtained write lock to known URLs");
 
-    // if the URL exists as a key, then return the already generated short URL,
-    // otherwise generate a new ID and short URL, then send the response.
+    // check if the value already exists before inserting the value, calling
+    // insert and using the returned Option would change the shortened URL
     match urls.get(&valid_url.to_string()) {
         Some(existing) => {
             debug!(
