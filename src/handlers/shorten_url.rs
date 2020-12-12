@@ -54,9 +54,7 @@ pub async fn shorten(
             );
             let shortened = format!("short.fe/{}", nanoid!(10));
 
-            // it's the first time this value is inserted, so HashMap.insert()
-            // will return a `None` variant that we'll throw out
-            if urls.insert(valid_url.to_string(), shortened.to_string()).is_none() {}
+            urls.insert(valid_url.to_string(), shortened.to_string());
 
             info!(
                 shortened_url = shortened.as_str(),
